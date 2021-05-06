@@ -23,16 +23,19 @@ with zipfile.ZipFile("mirai.zip","r") as zip_ref:
 '''
 
 # File location
-path = "../../dataset/IOT_NETWORK_INTRUSION_DATASET/dos-synflooding-4-dec.pcap" #the pcap, pcapng, or tsv file to process.
+benign_path = "../../dataset/IOT_NETWORK_INTRUSION_DATASET/benign-dec.pcap"
+benign_size = 137396
+
+target_path = "../../dataset/IOT_NETWORK_INTRUSION_DATASET/dos-synflooding-1-dec.pcap" #the pcap, pcapng, or tsv file to process.
 packet_limit = np.Inf #the number of packets to process
 
 # KitNET params:
 maxAE = 10 #maximum size for any autoencoder in the ensemble layer
-FMgrace = 50 #the number of instances taken to learn the feature mapping (the ensemble's architecture)
-ADgrace = 200 #the number of instances used to train the anomaly detector (ensemble itself)
+FMgrace = 10000 #the number of instances taken to learn the feature mapping (the ensemble's architecture)
+ADgrace = 100000 #the number of instances used to train the anomaly detector (ensemble itself)
 
 # Build Kitsune
-K = Kitsune(path,packet_limit,maxAE,FMgrace,ADgrace)
+K = Kitsune(benign_path, target_path, packet_limit,maxAE,FMgrace,ADgrace)
 
 print("Running Kitsune:")
 RMSEs = []
@@ -41,16 +44,18 @@ start = time.time()
 # Here we process (train/execute) each individual packet.
 # In this way, each observation is discarded after performing process() method.
 
+# parse attack packet numbers
 attackPacketNumbers = []
 
-with open(path.replace('.pcap', '.attacks.tsv'), 'r') as af:
+with open(target_path.replace('.pcap', '.attacks.tsv'), 'r') as af:
     while True:
         attackPacketNumber = af.readline().strip().split('\t')[0]
         if not attackPacketNumber: break
         attackPacketNumbers.append(attackPacketNumber)
 print("Attack packet size: ", len(attackPacketNumbers))
 
-with open(path.replace('.pcap', '_result.tsv'), 'w') as fp:
+
+with open(target_path.replace('.pcap', '_result.tsv'), 'w') as fp:
     while True:
         i+=1
         if i % 1000 == 0:
@@ -58,12 +63,12 @@ with open(path.replace('.pcap', '_result.tsv'), 'w') as fp:
         rmse = K.proc_next_packet()
         if rmse == -1:
             break
-        if i >= FMgrace + ADgrace:
+        if i > benign_size:
             RMSEs.append(rmse)
             label = 0
-            if str(i) in attackPacketNumbers:
+            if str(i - benign_size) in attackPacketNumbers:
                 label = 1
-            fp.write(f'{i}\t{rmse:.10f}\t{label}\n')
+            fp.write(f'{i- benign_size}\t{rmse:.10f}\t{label}\n')
     stop = time.time()
     print("Complete. Time elapsed: "+ str(stop - start))
 

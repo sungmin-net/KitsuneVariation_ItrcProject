@@ -23,8 +23,10 @@ import subprocess
 # If wireshark is installed (tshark) it is used to parse (it's faster), otherwise, scapy is used (much slower).
 # If wireshark is used then a tsv file (parsed version of the pcap) will be made -which you can use as your input next time
 class FE:
-    def __init__(self,file_path,limit=np.inf):
-        self.path = file_path
+    def __init__(self,benign_path, target_path,limit=np.inf):
+        self.benign_path = benign_path
+        self.target_path = target_path
+        self.path = None
         self.limit = limit
         self.parse_type = None #unknown
         self.curPacketIndx = 0
@@ -52,31 +54,59 @@ class FE:
 
     def __prep__(self):
         ### Find file: ###
-        if not os.path.isfile(self.path):  # file does not exist
-            print("File: " + self.path + " does not exist")
+        if not os.path.isfile(self.benign_path):  # file does not exist
+            print("File: " + self.benign_path + " does not exist")
             raise Exception()
 
-        ### check file type ###
-        type = self.path.split('.')[-1]
+        ### Find file: ###
+        if not os.path.isfile(self.target_path):  # file does not exist
+            print("File: " + self.target_path + " does not exist")
+            raise Exception()
+
+        ### check file type ### - [Sungmin] Assuming we have tshark, make two .tsv
+        benign_type = self.benign_path.split('.')[-1]
+        target_type = self.target_path.split('.')[-1]
 
         self._tshark = self._get_tshark_path()
-        ##If file is TSV (pre-parsed by wireshark script)
-        if type == "tsv":
-            self.parse_type = "tsv"
 
-        ##If file is pcap
-        elif type == "pcap" or type == 'pcapng':
+        '''
+        ##If file is TSV (pre-parsed by wireshark script)
+        if benign_type == "tsv" and target_type == "tsv":
+            self.parse_type = "tsv"
+        '''
+
+        ##If benign file is pcap
+        if benign_type == "pcap" or benign_type == 'pcapng':
             # Try parsing via tshark dll of wireshark (faster)
             if os.path.isfile(self._tshark):
-                self.pcap2tsv_with_tshark()  # creates local tsv file
-                self.path += ".tsv"
-                self.parse_type = "tsv"
+                self.pcap2tsv_with_tshark(self.benign_path)  # creates local tsv file
+                self.benign_path += ".tsv"
+            '''
             else: # Otherwise, parse with scapy (slower)
                 print("tshark not found. Trying scapy...")
                 self.parse_type = "scapy"
         else:
-            print("File: " + self.path + " is not a tsv or pcap file")
+            print("File: " + self.benign_path + " is not a tsv or pcap file")
             raise Exception()
+            '''
+        '''
+        if target_type == "tsv":
+            self.target_parse_type = "tsv"
+        '''
+        if target_type == "pcap" or target_type == "pcapng":
+            if os.path.isfile(self._tshark):
+                self.pcap2tsv_with_tshark(self.target_path)
+                self.target_path += ".tsv"
+            '''
+            else: # Otherwise, parse with scapy (slower)
+                print("tshark not found. Trying scapy...")
+                self.benign_parse_type = "scapy"
+        else:
+            print("File: " + self.target_path + " is not a tsv or pcap file")
+            raise Exception()
+            '''
+
+        self.parse_type = "tsv"
 
         ### open readers ##
         if self.parse_type == "tsv":
@@ -92,7 +122,27 @@ class FE:
                     maxInt = int(maxInt / 10)
                     decrement = True
 
-            print("counting lines in file...")
+            print("counting lines in files...")
+            benign_num_lines = sum(1 for line in open(self.benign_path))
+            print("There are " + str(benign_num_lines) + " benign packets.")
+
+            target_num_lines = sum(1 for line in open(self.target_path))
+            print("There are " + str(target_num_lines) + " target packets.")
+
+            self.path = self.target_path.replace('.tsv', 'WithBenign.tsv')
+            concatenated_file = open(self.path, 'w')
+            benign_tsv_file = open(self.benign_path, 'r')
+            target_tsv_file = open(self.target_path, 'r')
+            target_tsv_file_lines = target_tsv_file.read().splitlines(True)
+
+            for line in benign_tsv_file:
+                concatenated_file.write(line)
+            concatenated_file.writelines(target_tsv_file_lines[1:])
+
+            concatenated_file.close()
+            benign_tsv_file.close()
+            target_tsv_file.close()
+
             num_lines = sum(1 for line in open(self.path))
             print("There are " + str(num_lines) + " Packets.")
             self.limit = min(self.limit, num_lines-1)
@@ -207,12 +257,12 @@ class FE:
             return []
 
 
-    def pcap2tsv_with_tshark(self):
+    def pcap2tsv_with_tshark(self, path):
         print('Parsing with tshark...')
         fields = "-e frame.time_epoch -e frame.len -e eth.src -e eth.dst -e ip.src -e ip.dst -e tcp.srcport -e tcp.dstport -e udp.srcport -e udp.dstport -e icmp.type -e icmp.code -e arp.opcode -e arp.src.hw_mac -e arp.src.proto_ipv4 -e arp.dst.hw_mac -e arp.dst.proto_ipv4 -e ipv6.src -e ipv6.dst"
-        cmd =  '"' + self._tshark + '" -r '+ self.path +' -T fields '+ fields +' -E header=y -E occurrence=f > '+self.path+".tsv"
+        cmd =  '"' + self._tshark + '" -r '+ path +' -T fields '+ fields +' -E header=y -E occurrence=f > '+ path +".tsv"
         subprocess.call(cmd,shell=True)
-        print("tshark parsing complete. File saved as: "+self.path +".tsv")
+        print("tshark parsing complete. File saved as: "+ path +".tsv")
 
     def get_num_features(self):
         return len(self.nstat.getNetStatHeaders())
