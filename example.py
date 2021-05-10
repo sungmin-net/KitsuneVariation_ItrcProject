@@ -1,6 +1,7 @@
 from Kitsune import Kitsune
 import numpy as np
 import time
+import sys
 
 ##############################################################################
 # Kitsune a lightweight online network intrusion detection system based on an ensemble of autoencoders (kitNET).
@@ -21,12 +22,21 @@ import zipfile
 with zipfile.ZipFile("mirai.zip","r") as zip_ref:
     zip_ref.extractall()
 '''
+if (len(sys.argv) != 2):
+    print("How to use\n$ python3 example.py [target.pcap]")
+    exit()
 
 # File location
 benign_path = "../../dataset/IOT_NETWORK_INTRUSION_DATASET/benign-dec.pcap"
 benign_size = 137396
 
-target_path = "../../dataset/IOT_NETWORK_INTRUSION_DATASET/dos-synflooding-1-dec.pcap" #the pcap, pcapng, or tsv file to process.
+print("Benign pcap: ", benign_path)
+print("Benign size: ", benign_size)
+
+target_path = sys.argv[1] #the pcap, pcapng, or tsv file to process.
+
+print("Target pcap: ", target_path)
+
 packet_limit = np.Inf #the number of packets to process
 
 # KitNET params:
